@@ -4,7 +4,10 @@ from lib.util import new_id, now, serialize
 
 
 async def add_message(database, conversation: dict, role: str, text: str,
-                      confidence: float | None = None, demo: bool | None = None) -> dict:
+                      confidence: float | None = None, demo: bool | None = None,
+                      attachments: list[dict] | None = None,
+                      usage: dict | None = None,
+                      language: str | None = None) -> dict:
     msg = {
         "_id": new_id("msg_"),
         "conversation_id": conversation["_id"],
@@ -17,6 +20,12 @@ async def add_message(database, conversation: dict, role: str, text: str,
         msg["confidence"] = confidence
     if demo is not None:
         msg["demo"] = demo
+    if attachments:
+        msg["attachments"] = attachments
+    if usage:
+        msg["usage"] = usage
+    if language:
+        msg["language"] = language
     await database[db_module.MESSAGES].insert_one(msg)
 
     updates = {"updated_at": now()}

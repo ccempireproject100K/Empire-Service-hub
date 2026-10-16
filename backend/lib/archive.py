@@ -7,7 +7,7 @@ handle and how a human fixed it* — exactly the corpus that shrinks future
 escalations.
 """
 import db as db_module
-from lib import pii
+from lib import embeddings, pii
 from lib.util import new_id, now, serialize
 
 
@@ -24,6 +24,8 @@ async def write_escalation(database, tenant: dict, conversation: dict, reason: d
         }
         for m in messages
     ]
+    masked = pii.mask_transcript(transcript)
+    question = next((m["text"] for m in masked if m["role"] == "customer"), "")
     record = {
         "_id": new_id("arc_"),
         "tenant_id": tenant["_id"],
@@ -31,9 +33,15 @@ async def write_escalation(database, tenant: dict, conversation: dict, reason: d
         "escalated_at": now(),
         "reason": reason,
         "status": "open",
-        "transcript": pii.mask_transcript(transcript),
+        "transcript": masked,
+        "question": question,
         "resolution": None,
     }
+    # v2: embed the (masked) question for semantic similar-case retrieval.
+    if question and embeddings.available():
+        vector = await embeddings.embed_one(question)
+        if vector:
+            record["embedding"] = vector
     await database[db_module.ARCHIVE].insert_one(record)
     return record
 
