@@ -19,7 +19,8 @@ from fastapi.staticfiles import StaticFiles
 
 import db as db_module
 from lib import config, pii
-from routers import archive, auth, operator, tenants, widget
+from routers import archive, attachments, auth, channels, operator, sync, tenants
+from routers import widget
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("service-hub")
@@ -27,7 +28,7 @@ logger = logging.getLogger("service-hub")
 BASE_DIR = Path(__file__).resolve().parent
 FRONTEND_DIR = BASE_DIR.parent / "frontend"
 
-app = FastAPI(title="Service Hub", version="1.0.0")
+app = FastAPI(title="Service Hub", version="2.0.0")
 
 # Extra API origins (the console itself is same-origin; the widget enforces
 # per-tenant origins in the middleware below).
@@ -113,6 +114,47 @@ app.include_router(tenants.router)
 app.include_router(widget.router)
 app.include_router(operator.router)
 app.include_router(archive.router)
+app.include_router(channels.router)
+app.include_router(sync.router)
+app.include_router(attachments.router)
+
+
+# ------------------------------------------------------- v2: SLA scheduler
+import asyncio  # noqa: E402
+
+_scheduler_task: asyncio.Task | None = None
+
+
+async def _sla_scheduler_loop():
+    """Periodically stamp SLA states, raise alerts, retry webhooks."""
+    from lib import sla as sla_lib
+
+    try:
+        interval = float(os.environ.get("HUB_SLA_SWEEP_SECONDS", "60"))
+    except ValueError:
+        interval = 60.0
+    while True:
+        try:
+            await asyncio.sleep(interval)
+            await sla_lib.run_sweep(db_module.get_db())
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # a bad sweep must never kill the API
+            logger.exception("SLA sweep failed")
+
+
+@app.on_event("startup")
+async def _start_scheduler():
+    global _scheduler_task
+    if os.environ.get("HUB_SCHEDULER", "on") == "off":
+        return
+    _scheduler_task = asyncio.create_task(_sla_scheduler_loop())
+
+
+@app.on_event("shutdown")
+async def _stop_scheduler():
+    if _scheduler_task:
+        _scheduler_task.cancel()
 
 
 # ------------------------------------------------------------ static assets
