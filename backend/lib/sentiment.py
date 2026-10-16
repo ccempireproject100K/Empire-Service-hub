@@ -11,6 +11,9 @@ POSITIVE_WORDS = [
     "great", "awesome", "excellent", "perfect", "thanks", "thank you",
     "appreciate", "helpful", "happy", "pleased", "wonderful", "fantastic",
     "love", "good", "nice", "amazing", "resolved", "fixed",
+    # Spanish (v2: lexicons cover EN + ES; FR/ZH are detection-tagged only)
+    "gracias", "excelente", "perfecto", "maravilloso", "fantástico",
+    "contento", "feliz", "bueno", "buena", "amable", "resuelto", "arreglado",
 ]
 
 NEGATIVE_WORDS = [
@@ -20,6 +23,12 @@ NEGATIVE_WORDS = [
     "refund", "cancel", "hate", "worst", "poor", "slow", "never", "again",
     "complaint", "lawsuit", "lawyer", "bbb", "not working", "doesn't work",
     "does not work", "still waiting", "nobody", "ignore", "ignored",
+    # Spanish
+    "malo", "mala", "pésimo", "enojado", "enojada", "furioso", "frustrado",
+    "molesto", "decepcionado", "inaceptable", "ridículo", "inútil", "roto",
+    "equivocado", "falla", "fallo", "estafa", "reembolso", "cancelar",
+    "odio", "peor", "lento", "nunca", "queja", "demanda", "abogado",
+    "no funciona", "sigo esperando", "ignorado",
 ]
 
 # Frustration phrases count double — they signal a customer about to churn.
@@ -27,6 +36,8 @@ FRUSTRATION_PHRASES = [
     "this is ridiculous", "not working", "doesn't work", "does not work",
     "still waiting", "speak to a human", "talk to a human", "real person",
     "cancel my", "refund my", "i want a refund",
+    "es ridículo", "no funciona", "sigo esperando", "hablar con un humano",
+    "quiero un reembolso", "quiero cancelar",
 ]
 
 

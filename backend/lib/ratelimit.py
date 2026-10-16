@@ -17,6 +17,9 @@ RATE_LIMITS: dict[str, tuple[int, int]] = {
     "widget_read": (120, 60),
     "widget_csat": (10, 60),
     "auth_login": (10, 60),
+    "channel_email": (120, 60),
+    "channel_sms": (120, 60),
+    "channel_voice": (60, 60),
 }
 
 _hits: dict[str, deque] = defaultdict(deque)
