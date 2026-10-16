@@ -46,3 +46,12 @@ ul { list-style: none; margin: 0; padding: 0; }
 .actions { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; }
 pre.transcript { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;
   padding: 8px; white-space: pre-wrap; font-size: 12px; max-height: 260px; overflow: auto; }
+
+/* v2 additions */
+.panel { border-top: 1px solid #e5e7eb; margin-top: 10px; padding-top: 8px; }
+.panel h4 { margin: 4px 0 6px; font-size: 13px; color: #374151; }
+.case { padding: 6px 0; border-bottom: 1px dashed #e5e7eb; font-size: 13px; }
+.case:last-child { border-bottom: none; }
+#draftList textarea.draftBody { width: 100%; margin: 6px 0; }
+#slaAlerts { border-color: #f59e0b; background: #fffbeb; margin-bottom: 12px; }
+#topicList li, #qualityList li, #draftList li { padding: 6px 0; }
