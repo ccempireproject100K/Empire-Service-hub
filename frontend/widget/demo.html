@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Service Hub widget — demo host page</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 40px; color: #111; }
+  code { background: #f1f5f9; padding: 2px 6px; border-radius: 6px; }
+  .card { max-width: 640px; border: 1px solid #e5e7eb; border-radius: 12px; padding: 20px; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>Demo host page</h1>
+  <p>This page stands in for a product (the bookkeeping app, Momo, …). The
+  chat launcher in the bottom-right corner is the Service Hub widget, embedded
+  with a single script tag:</p>
+  <pre><code>&lt;script src="/widget.js" data-hub-key="REPLACE_WITH_TENANT_PUBLIC_KEY" async&gt;&lt;/script&gt;</code></pre>
+  <p>Seed a demo tenant first (<code>python backend/scripts/seed_demo.py</code>),
+  paste its public key into the script tag below in this file, reload, and chat.
+  Try asking about opening hours — or say the word <em>chargeback</em> to watch
+  an escalation land in the operator console at <code>/console</code>.</p>
+</div>
+<!-- Replace the key with the public key printed by the seed script. -->
+<script src="/widget.js" data-hub-key="REPLACE_WITH_TENANT_PUBLIC_KEY" async></script>
+</body>
+</html>

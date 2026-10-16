@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Service Hub — Operator Console</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header>
+  <div class="brand">Service Hub <span>operator console</span></div>
+  <div id="headerRight">
+    <select id="tenantSelect" title="Tenant"></select>
+    <span id="statsBar" class="stats"></span>
+    <button id="logoutBtn" class="ghost hidden">Log out</button>
+  </div>
+</header>
+
+<main>
+  <section id="loginView" class="card">
+    <h2>Operator sign in</h2>
+    <form id="loginForm">
+      <label>Email <input id="loginEmail" type="email" required></label>
+      <label>Password <input id="loginPassword" type="password" required></label>
+      <button type="submit">Sign in</button>
+      <p id="loginError" class="error"></p>
+    </form>
+  </section>
+
+  <section id="appView" class="hidden">
+    <nav class="tabs">
+      <button data-tab="queue" class="active">Conversations</button>
+      <button data-tab="archive">Escalation archive</button>
+    </nav>
+
+    <div id="tab-queue" class="tabpane">
+      <div class="columns">
+        <div class="list card">
+          <div class="listhead">
+            <select id="statusFilter">
+              <option value="">All statuses</option>
+              <option value="escalated">Escalated</option>
+              <option value="operator_handling">With a human</option>
+              <option value="ai_handling">AI handling</option>
+              <option value="open">Open</option>
+              <option value="resolved">Resolved</option>
+            </select>
+            <button id="refreshBtn" class="ghost">Refresh</button>
+          </div>
+          <ul id="convList"></ul>
+        </div>
+        <div class="detail card" id="convDetail">
+          <p class="muted">Select a conversation.</p>
+        </div>
+      </div>
+    </div>
+
+    <div id="tab-archive" class="tabpane hidden">
+      <div class="card">
+        <div class="listhead">
+          <span>The learning corpus: every escalation + how a human resolved it.</span>
+          <button id="exportBtn">Export JSONL</button>
+        </div>
+        <ul id="archiveList"></ul>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>
