@@ -63,6 +63,14 @@
       brand.name || cfg.tenant.name);
     var demoTag = cfg.demo ? el("span", "font-weight:400;font-size:11px;opacity:.85", "  · demo AI") : null;
     if (demoTag) header.appendChild(demoTag);
+    // v2: tenant status banner (incident notices) rides atop the panel.
+    var bannerCfg = (cfg.proactive || {}).status_banner;
+    var banner = null;
+    if (bannerCfg && bannerCfg.active && bannerCfg.text) {
+      banner = el("div",
+        "background:#fef3c7;color:#92400e;padding:8px 12px;font-size:12px;border-bottom:1px solid #fde68a",
+        "⚠ " + bannerCfg.text);
+    }
     var messages = el("div", "flex:1;overflow-y:auto;padding:12px;background:#f8fafc");
     var csatBox = el("div", "display:none;padding:10px;background:#fffbeb;border-top:1px solid #fde68a");
     var form = el("form", "display:flex;gap:8px;padding:10px;border-top:1px solid #e5e7eb");
@@ -71,8 +79,42 @@
     var send = el("button",
       "border:none;border-radius:8px;padding:9px 14px;color:#fff;cursor:pointer;background:" + primary,
       "Send");
+    // v2: attachments — upload on pick, send the id with the next message.
+    var attachBtn = el("button",
+      "border:1px solid #d1d5db;border-radius:8px;padding:9px 10px;background:#fff;cursor:pointer",
+      "📎");
+    attachBtn.type = "button";
+    attachBtn.title = "Attach a file";
+    var fileInput = document.createElement("input");
+    fileInput.type = "file"; fileInput.style.display = "none";
+    var pendingAttachmentIds = [];
+    attachBtn.addEventListener("click", function () {
+      if (!conversationId) { ensureConversation(); }
+      fileInput.click();
+    });
+    fileInput.addEventListener("change", function () {
+      var file = fileInput.files[0];
+      if (!file || !conversationId) return;
+      var reader = new FileReader();
+      reader.onload = function () {
+        var dataB64 = String(reader.result).split(",")[1] || "";
+        api("/api/widget/conversations/" + conversationId + "/attachments", {
+          method: "POST",
+          body: JSON.stringify({
+            filename: file.name, content_type: file.type || null, data_base64: dataB64,
+          }),
+        }).then(function (data) {
+          pendingAttachmentIds.push(data.attachment._id);
+          attachBtn.textContent = "📎✓";
+        }).catch(function () { attachBtn.textContent = "📎✗"; });
+      };
+      reader.readAsDataURL(file);
+    });
+    form.appendChild(attachBtn); form.appendChild(fileInput);
     form.appendChild(input); form.appendChild(send);
-    panel.appendChild(header); panel.appendChild(messages);
+    panel.appendChild(header);
+    if (banner) panel.appendChild(banner);
+    panel.appendChild(messages);
     panel.appendChild(csatBox); panel.appendChild(form);
     document.body.appendChild(panel);
 
@@ -88,6 +130,10 @@
               : "background:#fff;border:1px solid #e5e7eb"),
         msg.text);
       wrap.appendChild(b);
+      (msg.attachments || []).forEach(function (att) {
+        wrap.appendChild(el("div", "font-size:12px;margin-top:2px;opacity:.8",
+          "📎 " + att.filename));
+      });
       messages.appendChild(wrap);
       messages.scrollTop = messages.scrollHeight;
     }
@@ -141,21 +187,55 @@
       var text = input.value.trim();
       if (!text || !conversationId) return;
       input.value = "";
+      var attachmentIds = pendingAttachmentIds;
+      pendingAttachmentIds = [];
+      attachBtn.textContent = "📎";
       api("/api/widget/conversations/" + conversationId + "/messages", {
-        method: "POST", body: JSON.stringify({ text: text }),
+        method: "POST",
+        body: JSON.stringify({ text: text, attachment_ids: attachmentIds }),
       }).then(function (data) {
         data.messages.forEach(bubble);
         if (data.conversation.status === "resolved") showCsatOnce();
       }).catch(function () {});
     });
 
+    function openPanel() {
+      if (panel.style.display !== "none") return;
+      panel.style.display = "flex";
+      ensureConversation();
+      clearInterval(pollTimer);
+      pollTimer = setInterval(refresh, 4000);
+    }
+
     launcher.addEventListener("click", function () {
       var open = panel.style.display !== "none";
-      panel.style.display = open ? "none" : "flex";
-      if (!open) {
-        ensureConversation();
-        clearInterval(pollTimer);
-        pollTimer = setInterval(refresh, 4000);
+      if (open) { panel.style.display = "none"; } else { openPanel(); }
+    });
+
+    // v2: proactive help — offer assistance before the customer asks,
+    // per the tenant's configured triggers (time on page / specific paths).
+    var proactiveFired = false;
+    function fireProactive(trigger) {
+      if (proactiveFired) return;
+      proactiveFired = true;
+      openPanel();
+      var note = el("div",
+        "margin:6px 0;text-align:left", null);
+      var b = el("div",
+        "display:inline-block;max-width:85%;padding:8px 11px;border-radius:12px;" +
+        "background:#eef2ff;border:1px solid #c7d2fe;white-space:pre-wrap",
+        trigger.message || "Hi there — need a hand with anything?");
+      note.appendChild(b);
+      messages.appendChild(note);
+      messages.scrollTop = messages.scrollHeight;
+    }
+    ((cfg.proactive || {}).triggers || []).forEach(function (trigger) {
+      if (trigger.type === "time_on_page") {
+        setTimeout(function () { fireProactive(trigger); },
+                   (trigger.seconds || 30) * 1000);
+      } else if (trigger.type === "page_path" && trigger.path &&
+                 window.location.pathname.indexOf(trigger.path) !== -1) {
+        setTimeout(function () { fireProactive(trigger); }, 1200);
       }
     });
   }

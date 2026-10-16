@@ -4,15 +4,19 @@ Rules, in priority order (first match wins, and the winning rule is recorded):
   a) customer_request — the customer explicitly asks for a human
   b) keyword          — a tenant-configured escalation keyword appears
   c) sentiment        — lexicon sentiment at/under the tenant's threshold
-  d) low_confidence   — AI confidence under the tenant's threshold
+  d) sensitive_topic  — a tenant-configured sensitive topic appears (v2:
+                        auto-escalates regardless of AI confidence)
+  e) low_confidence   — AI confidence under the tenant's threshold
 
 On escalation the conversation moves to the human queue and an archive
-record is written (the learning loop) — see lib.archive.
+record is written (the learning loop) — see lib.archive. v2 also
+auto-assigns an operator (lib.routing) and emits the
+``escalation.created`` tenant webhook (lib.webhooks).
 """
 import re
 
 import db as db_module
-from lib import archive, sentiment
+from lib import archive, guardrails, routing, sentiment, webhooks
 from lib.util import new_id, now
 
 _HUMAN_REQUEST_RX = re.compile(
@@ -52,6 +56,15 @@ def evaluate(tenant: dict, customer_text: str, ai_result: dict | None) -> dict |
             "detail": f"Sentiment {sentiment_result['score']} "
                       f"({sentiment_result['negative_hits']} negative hits).",
             "sentiment": sentiment_result,
+        }
+
+    sensitive = guardrails.match_sensitive_topic(tenant, customer_text)
+    if sensitive:
+        return {
+            "rule": "sensitive_topic",
+            "detail": f"Sensitive topic '{sensitive['topic']}' "
+                      f"(keyword: {sensitive['keyword']}).",
+            "topic": sensitive["topic"],
         }
 
     if ai_result is not None:
@@ -98,4 +111,13 @@ async def maybe_escalate(database, tenant: dict, conversation: dict,
         database, conversation["_id"], tenant["_id"],
         "This conversation has been escalated to a human teammate.",
     )
+    # v2: route to an operator + notify subscribed products.
+    await routing.auto_assign(database, tenant, conversation)
+    await webhooks.emit(database, tenant, "escalation.created", {
+        "conversation_id": conversation["_id"],
+        "rule": reason["rule"],
+        "detail": reason.get("detail"),
+        "channel": conversation.get("channel"),
+        "external_ref": conversation.get("external_ref"),
+    })
     return reason

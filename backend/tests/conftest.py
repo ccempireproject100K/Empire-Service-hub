@@ -16,6 +16,10 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 os.environ.setdefault("HUB_JWT_SECRET", "test-secret")
 os.environ.pop("GEMINI_API_KEY", None)  # force demo AI mode in tests
 os.environ.pop("OPENAI_API_KEY", None)
+os.environ["HUB_SCHEDULER"] = "off"  # sweeps are invoked directly in tests
+for _var in ("SMTP_HOST", "SMTP_FROM", "TWILIO_ACCOUNT_SID",
+             "TWILIO_AUTH_TOKEN", "TWILIO_FROM_NUMBER", "HUB_CHANNEL_SECRET"):
+    os.environ.pop(_var, None)
 
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402

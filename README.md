@@ -50,6 +50,92 @@ customer ── widget (embedded in a product) ──► hub API ──► AI fr
 | Archive | `backend/lib/archive.py`, `routers/archive.py` | Escalation snapshot (transcript **PII-masked at write time**) + the human's resolution. Browse in the console or export JSONL. |
 | Console | `frontend/console/` | Operator sign-in (PBKDF2 passwords, JWT), conversation queue, take over / reply / resolve, archive browser, per-tenant CSAT + SLA header stats. |
 | Widget | `frontend/widget/widget.js` | One script tag; themed by tenant branding; resumes conversations via localStorage; CSAT star prompt appears on resolution. |
+| Learning loop (v2) | `backend/lib/learning.py`, `lib/pipeline.py` | Every channel runs one pipeline: language detect → precedent + customer-history context → AI reply → escalation. Resolutions become KB drafts; metrics track deflection. |
+| Channels (v2) | `backend/routers/channels.py` | Email (secret-key webhook + SMTP/outbox), SMS (Twilio-shaped, signature-checked), voice transcripts (Momo receptionist handoffs). |
+| Integrations (v2) | `backend/lib/webhooks.py`, `routers/sync.py` | Signed tenant webhooks with retry + delivery log; sync-back status API by `external_ref`. |
+
+## v2 — closing the loop
+
+v2 turns the hub from an AI front line with an archive into a learning
+system, and from a chat widget into an every-channel service platform.
+Everything below follows the same rules as v1: key-gated providers,
+demo-safe without keys, per-tenant isolation on every new surface.
+
+**A. The learning loop, closed** (`lib/learning.py`)
+- *Resolution → KB draft:* resolving an escalated conversation generates
+  a draft knowledge article (LLM-written with a key, deterministic
+  template in demo mode) into a per-tenant queue. Operators edit,
+  approve (publishes to the live KB) or discard from the console's
+  **KB drafts** tab (`/api/tenants/{id}/kb-drafts`).
+- *Similar-case retrieval:* new escalations and AI answers pull the
+  closest archived cases (keyword overlap + embedding boost when
+  configured). The AI prompt gets them as precedent; the operator sees
+  "Solved before like this" in the conversation detail.
+- *Learning metrics:* deflection rate (resolved without escalation),
+  repeat-issue rate, daily trend — in `/api/operator/stats` and
+  `/api/operator/analytics`.
+
+**B. Semantic knowledge** (`lib/documents.py`, `lib/embeddings.py`)
+- Operators ingest documents (txt/md/html/csv/json content, or one URL)
+  via `/api/tenants/{id}/documents`; documents are chunked, embedded
+  when a provider is configured, and retrieved *hybrid*: keyword scoring
+  (unchanged v1 behavior) plus a semantic boost when embeddings exist.
+
+**C. Channels** (`routers/channels.py`, `lib/mailer.py`, `lib/storage.py`)
+- *Email:* `POST /api/channels/email/inbound` (tenant secret key or
+  `HUB_CHANNEL_SECRET`) creates/continues a conversation by sender;
+  replies go out via SMTP (`SMTP_*` env) or queue in the outbox.
+- *SMS:* `POST /api/channels/sms/inbound` takes Twilio-shaped form posts,
+  resolves the tenant by destination number (`sms_number` on the tenant),
+  verifies the Twilio signature when `TWILIO_AUTH_TOKEN` is set, and
+  replies via Twilio when configured (outbox-queued otherwise).
+- *Voice:* `POST /api/channels/voice/transcript` accepts a call
+  transcript + summary (this is how Momo's AI receptionist hands off) and
+  lands it escalated, with full context, in the queue + archive.
+- *Attachments:* widget + console uploads (base64 JSON, size/type
+  limited, PII-safe filenames, local-disk storage under
+  `HUB_UPLOAD_DIR`) attach to messages; downloads re-check tenant scope.
+
+**D. Operator depth** (`lib/routing.py`, `lib/sla.py`)
+- Round-robin auto-assignment on escalation (least-loaded available
+  operator; per-tenant `auto_assign` opt-out), manual reassign, and an
+  availability toggle in the console header.
+- Internal notes on conversations (never customer-visible) and per-tenant
+  canned responses/macros, insertable from the reply box.
+- SLA clocks per tenant (first response / resolution minutes); an in-app
+  scheduler sweep stamps approaching/breached states, raises console
+  alerts (`/api/operator/sla-alerts`), and fires `sla.breached` webhooks.
+
+**E. Two-way integrations** (`lib/webhooks.py`, `routers/sync.py`)
+- Tenant webhooks OUT for `escalation.created`, `conversation.resolved`,
+  `sla.breached`, `csat.received` — HMAC-SHA256 signed with the tenant's
+  `webhook_secret`, retried with backoff (3 attempts), fully logged
+  (`webhook_deliveries` collection).
+- Sync-back API: products read resolution status by their own
+  `external_ref` or hub conversation id with the tenant secret key
+  (`/api/sync/status`, `/api/sync/conversations/{id}`).
+
+**F. Analytics & quality** (`lib/analytics.py`, `lib/quality.py`)
+- Topic clustering: escalations grouped by dominant keywords — the top
+  escalation drivers per tenant (`/api/operator/analytics`).
+- Cost-per-resolution: per-message token estimates × configurable
+  provider rates → tenant spend + cost per resolved conversation.
+- Quality self-review: every resolution is scored (completeness, tone,
+  policy flags); low scores queue for operator review in Insights.
+
+**G. Market-leading touches**
+- *Proactive widget:* per-tenant triggers (time-on-page, page paths)
+  offer help before the customer asks; a tenant status banner (incident
+  notice) renders in the widget.
+- *Customer memory:* customers are recognized per tenant by email /
+  product ref / phone; prior conversations + resolutions feed the AI
+  prompt and the operator timeline.
+- *Language auto-detect:* each message's language is detected (EN/ES/FR/ZH
+  tags); AI replies follow it within the tenant's enabled languages.
+  Sentiment lexicons cover EN + ES.
+- *Guardrails:* per-tenant sensitive topics (`sensitive_topics`) force
+  escalation regardless of confidence; AI replies pass an outbound PII
+  check and are masked + flagged if the model echoes personal data.
 
 ## Quick start
 
@@ -92,6 +178,15 @@ All secrets come from the environment only. Every provider key is optional
 | `HUB_CORS_ORIGINS` | *(none)* | Extra comma-separated API origins; the console is same-origin and the widget enforces per-tenant `allowed_origins` |
 | `HUB_ADMIN_EMAIL` / `HUB_ADMIN_PASSWORD` | demo values | Seed-script admin operator only |
 | `PORT` | `8000` | Listen port when run as `python server.py` |
+| `OPENAI_EMBED_MODEL` / `GEMINI_EMBED_MODEL` | provider defaults | Embedding models for hybrid retrieval (v2 §B) |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_FROM`, `SMTP_USERNAME`, `SMTP_PASSWORD`, `SMTP_TLS` | — | Outbound email; unset → replies queue in the outbox (v2 §C) |
+| `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_FROM_NUMBER` | — | Outbound SMS + inbound signature verification; unset → outbox queue (v2 §C) |
+| `HUB_CHANNEL_SECRET` | — | Optional shared secret for email/voice channel webhooks (alternative to per-tenant secret keys) |
+| `HUB_UPLOAD_DIR` | `backend/uploads/` | Attachment storage directory (v2 §C) |
+| `HUB_MAX_ATTACHMENT_MB` | `10` | Attachment size limit |
+| `HUB_SLA_SWEEP_SECONDS` | `60` | SLA scheduler interval; `HUB_SCHEDULER=off` disables the in-app scheduler |
+| `HUB_AI_COST_OPENAI_PER_1K`, `HUB_AI_COST_GEMINI_PER_1K` | `0.0006` / `0.0003` | Estimated AI cost per 1k tokens (reporting only) |
+| `HUB_QUALITY_THRESHOLD` | `70` | Quality scores below this queue for operator review |
 
 ## Embedding the widget in a product
 
@@ -139,20 +234,32 @@ only its SHA-256 hash is stored, and it can be rotated from the admin API.
 cd backend && python -m pytest -q
 ```
 
-36 tests: auth, tenants/keys/branding/CORS, knowledge CRUD + secret-key
-path, conversation lifecycle, demo-AI determinism, **one test per
-escalation rule**, archive completion + PII masking + JSONL export, CSAT
-gating/validation/aggregation, tenant isolation, rate limiting. They run
+79 tests: the 36 v1 tests (auth, tenants/keys/branding/CORS, knowledge
+CRUD + secret-key path, conversation lifecycle, demo-AI determinism,
+**one test per escalation rule**, archive completion + PII masking +
+JSONL export, CSAT gating/validation/aggregation, tenant isolation, rate
+limiting) plus 43 v2 tests: KB-draft lifecycle + learning metrics,
+document ingestion + semantic retrieval, email/SMS/voice channels
+(incl. Twilio signatures), routing/availability/notes/macros, SLA sweep
++ signed webhooks with retry, sync-back API, topic clusters, cost
+accounting, quality queue, proactive config, sensitive topics, language
+detection, customer memory, attachments, and outbound-PII masking —
+with per-tenant isolation asserted on every new surface. They run
 against an in-memory Motor-style fake DB, so no MongoDB is needed.
 
 ## What's stubbed / later
 
-- **Channels:** chat only in v1. Email and voice channels plug into the
-  same conversation/escalation core next.
-- **Sentiment:** lexicon scorer (demo-grade). A real model can replace
-  `lib/sentiment.py:score_text` behind the same return shape.
+- **Sentiment:** lexicon scorer (demo-grade; EN + ES). A real model can
+  replace `lib/sentiment.py:score_text` behind the same return shape.
 - **AI confidence:** retrieval-grounded heuristic; provider-reported
   confidence/logprobs can be blended in later.
 - **Rate limiting:** in-memory; Redis fast-follow.
-- **Archive → learning:** the JSONL export is the training/eval corpus
-  format; automated fine-tune/eval jobs consume it downstream (refinery).
+- **Archive → training:** the JSONL export remains the training/eval
+  corpus format; automated fine-tune/eval jobs consume it downstream
+  (refinery). v2's in-product loop (drafts + precedent) is the live
+  learning path.
+- **Attachments:** local-disk storage; an S3-compatible backend can slot
+  into `lib/storage.py` behind the same functions.
+- **Document formats:** ingestion takes text-native formats
+  (txt/md/html/csv/json) + single-page URL fetch; PDF/DOCX should be
+  exported to text/markdown first.

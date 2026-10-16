@@ -32,6 +32,70 @@ def score_entry(query_tokens: set[str], entry: dict) -> int:
     )
 
 
+async def search_hybrid(database, tenant_id: str, query: str,
+                        limit: int = 3) -> tuple[list[dict], float]:
+    """Hybrid retrieval over KB articles *and* ingested document chunks.
+
+    Keyword scoring always runs (v1 behavior, fully deterministic). When an
+    embeddings provider is configured, chunks/articles carrying vectors get
+    a semantic boost blended into their keyword score, so paraphrases match
+    even with zero shared keywords. With no provider configured this is
+    exactly the v1 keyword path — same matches, same confidence.
+    """
+    from lib import embeddings  # local import: keeps module import graph flat
+
+    import db as db_module
+
+    entries = await database[db_module.KNOWLEDGE].find(
+        {"tenant_id": tenant_id}
+    ).to_list(length=1000)
+    chunks = await database[db_module.DOC_CHUNKS].find(
+        {"tenant_id": tenant_id}
+    ).to_list(length=5000)
+    pool = list(entries) + [
+        {"title": c.get("title", ""), "content": c.get("content", ""),
+         "tags": [], "embedding": c.get("embedding"),
+         "source": "document", "document_id": c.get("document_id")}
+        for c in chunks
+    ]
+    if not pool:
+        return [], 0.0
+
+    query_tokens = set(tokenize(query))
+    scored: list[tuple[float, dict]] = []
+    for entry in pool:
+        scored.append((float(score_entry(query_tokens, entry)), entry))
+
+    query_vector = await embeddings.embed_one(query) if embeddings.available() else None
+    if query_vector:
+        blended = []
+        for score, entry in scored:
+            vector = entry.get("embedding")
+            if not vector:
+                # Articles ingested before embeddings existed: embed lazily
+                # and cache the vector on the document for next time.
+                vector = await embeddings.embed_one(
+                    (entry.get("title", "") + " " + entry.get("content", ""))[:2000]
+                )
+                if vector and entry.get("_id"):
+                    await database[db_module.KNOWLEDGE].update_one(
+                        {"_id": entry["_id"]}, {"$set": {"embedding": vector}}
+                    )
+                    entry["embedding"] = vector
+            sim = embeddings.cosine(query_vector, vector)
+            if sim > 0.25:
+                score += 10.0 * sim  # strong semantic match rivals a title hit
+            blended.append((score, entry))
+        scored = blended
+
+    scored = [(s, e) for s, e in scored if s > 0]
+    scored.sort(key=lambda pair: pair[0], reverse=True)
+    if not scored:
+        return [], 0.0
+    confidence = min(1.0, scored[0][0] / 8.0)
+    return [e for _, e in scored[:limit]], round(confidence, 3)
+
+
 def retrieve(entries: list[dict], query: str, limit: int = 3) -> tuple[list[dict], float]:
     """Return (ranked matches, confidence 0..1) for a customer question."""
     query_tokens = set(tokenize(query))

@@ -20,6 +20,24 @@ def mask_text(text: str | None) -> str:
     return out
 
 
+def find_pii(text: str | None) -> list[str]:
+    """Return the kinds of PII present in text: 'email', 'phone', 'number'."""
+    if not text:
+        return []
+    found = []
+    if _EMAIL_RX.search(text):
+        found.append("email")
+    if _PHONE_RX.search(text):
+        found.append("phone")
+    if _LONG_DIGITS_RX.search(text):
+        found.append("number")
+    return found
+
+
+def contains_pii(text: str | None) -> bool:
+    return bool(find_pii(text))
+
+
 def mask_transcript(messages: list[dict]) -> list[dict]:
     """Return a masked copy of a message list for archive storage."""
     masked = []

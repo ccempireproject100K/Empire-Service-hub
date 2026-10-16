@@ -12,6 +12,7 @@
   <div id="headerRight">
     <select id="tenantSelect" title="Tenant"></select>
     <span id="statsBar" class="stats"></span>
+    <button id="availabilityBtn" class="ghost hidden">Available</button>
     <button id="logoutBtn" class="ghost hidden">Log out</button>
   </div>
 </header>
@@ -31,7 +32,11 @@
     <nav class="tabs">
       <button data-tab="queue" class="active">Conversations</button>
       <button data-tab="archive">Escalation archive</button>
+      <button data-tab="drafts">KB drafts <span id="draftCount"></span></button>
+      <button data-tab="insights">Insights</button>
     </nav>
+
+    <div id="slaAlerts" class="card hidden"></div>
 
     <div id="tab-queue" class="tabpane">
       <div class="columns">
@@ -62,6 +67,34 @@
           <button id="exportBtn">Export JSONL</button>
         </div>
         <ul id="archiveList"></ul>
+      </div>
+    </div>
+
+    <div id="tab-drafts" class="tabpane hidden">
+      <div class="card">
+        <div class="listhead">
+          <span>Draft knowledge articles generated from resolved escalations.
+                Approve to publish into the live knowledge base.</span>
+          <button id="draftRefreshBtn" class="ghost">Refresh</button>
+        </div>
+        <ul id="draftList"></ul>
+      </div>
+    </div>
+
+    <div id="tab-insights" class="tabpane hidden">
+      <div class="columns">
+        <div class="card">
+          <h3>Top escalation drivers</h3>
+          <ul id="topicList"></ul>
+        </div>
+        <div class="card">
+          <h3>Learning loop</h3>
+          <div id="learningStats"></div>
+          <h3>Estimated AI cost</h3>
+          <div id="costStats"></div>
+          <h3>Quality review queue</h3>
+          <ul id="qualityList"></ul>
+        </div>
       </div>
     </div>
   </section>
