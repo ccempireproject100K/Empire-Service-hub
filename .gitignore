@@ -5,5 +5,9 @@ __pycache__/
 .env
 node_modules/
 
+# Local push/PR tooling (never committed)
+.pr/
+.push-payloads/
+
 # Attachment storage (runtime data, never committed)
 backend/uploads/
