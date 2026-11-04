@@ -146,6 +146,11 @@ async def _sla_scheduler_loop():
 @app.on_event("startup")
 async def _start_scheduler():
     global _scheduler_task
+    if config.jwt_secret() == "demo-secret-change-me":
+        logger.warning(
+            "HUB_JWT_SECRET is unset — operator sessions are signed with the "
+            "public demo default. Set a real HUB_JWT_SECRET before deploying."
+        )
     if os.environ.get("HUB_SCHEDULER", "on") == "off":
         return
     _scheduler_task = asyncio.create_task(_sla_scheduler_loop())
