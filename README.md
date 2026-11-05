@@ -169,7 +169,8 @@ All secrets come from the environment only. Every provider key is optional
 |---|---|---|
 | `MONGO_URL` | `mongodb://localhost:27017` | MongoDB connection string |
 | `DB_NAME` | `service_hub` | Database name |
-| `HUB_JWT_SECRET` | `demo-secret-change-me` | Operator JWT signing secret — **set in production** |
+| `HUB_ENV` | `development` | Set to `production` on a real deployment: the app then **refuses to boot** on the demo JWT secret and the seed script refuses the demo admin credentials (see `DEPLOYMENT.md`) |
+| `HUB_JWT_SECRET` | `demo-secret-change-me` | Operator JWT signing secret — **set in production** (boot refuses the default when `HUB_ENV=production`) |
 | `HUB_JWT_TTL_HOURS` | `12` | Operator session length |
 | `GEMINI_API_KEY` | — | Enables the Gemini AI provider |
 | `GEMINI_MODEL` | `gemini-1.5-flash` | Gemini model name |
