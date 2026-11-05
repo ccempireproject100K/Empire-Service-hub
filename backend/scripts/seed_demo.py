@@ -5,6 +5,11 @@
 Reads MONGO_URL / DB_NAME like the app. Admin credentials come from
 HUB_ADMIN_EMAIL / HUB_ADMIN_PASSWORD (defaults are DEMO-ONLY — change them
 before any real deployment). The tenant secret key is printed exactly once.
+
+Production (HUB_ENV=production) is fail-closed: the script refuses to seed
+unless HUB_ADMIN_EMAIL and HUB_ADMIN_PASSWORD are explicitly set to real,
+non-demo values — the demo defaults are public, so a production database
+seeded with them would ship a publicly-known admin login.
 """
 import asyncio
 import os
@@ -13,11 +18,42 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import db as db_module  # noqa: E402
-from lib import auth  # noqa: E402
+from lib import auth, config  # noqa: E402
 from lib.util import now  # noqa: E402
 
-ADMIN_EMAIL = os.environ.get("HUB_ADMIN_EMAIL", "admin@demo.local")
-ADMIN_PASSWORD = os.environ.get("HUB_ADMIN_PASSWORD", "demo-admin-pass")
+DEMO_ADMIN_EMAIL = "admin@demo.local"
+DEMO_ADMIN_PASSWORD = "demo-admin-pass"
+
+ADMIN_EMAIL = os.environ.get("HUB_ADMIN_EMAIL", DEMO_ADMIN_EMAIL)
+ADMIN_PASSWORD = os.environ.get("HUB_ADMIN_PASSWORD", DEMO_ADMIN_PASSWORD)
+
+
+def assert_seed_credentials_safe() -> None:
+    """Refuse to seed demo credentials into a production database.
+
+    No-op outside production (demo/development seeding is unchanged).
+    In production both variables must be explicitly set in the
+    environment AND differ from the public demo defaults; otherwise
+    raise SystemExit naming every offending variable, before any
+    database write happens.
+    """
+    if not config.is_production():
+        return
+    problems = []
+    email = os.environ.get("HUB_ADMIN_EMAIL")
+    if not email or email == DEMO_ADMIN_EMAIL:
+        problems.append("HUB_ADMIN_EMAIL")
+    password = os.environ.get("HUB_ADMIN_PASSWORD")
+    if not password or password == DEMO_ADMIN_PASSWORD:
+        problems.append("HUB_ADMIN_PASSWORD")
+    if problems:
+        raise SystemExit(
+            "Refusing to seed in production (HUB_ENV=production): "
+            + " and ".join(problems)
+            + " must be explicitly set to real, non-demo values — the demo "
+              "defaults are public, and a production operator seeded with "
+              "them is a publicly-known admin login. See DEPLOYMENT.md."
+        )
 
 KB_ENTRIES = [
     {
@@ -50,6 +86,7 @@ KB_ENTRIES = [
 
 
 async def main():
+    assert_seed_credentials_safe()
     database = db_module.get_db()
 
     admin = await database[db_module.OPERATORS].find_one({"email": ADMIN_EMAIL})

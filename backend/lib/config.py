@@ -6,9 +6,48 @@ provider-abstracted demo-mode convention used across the user's products.
 """
 import os
 
+DEMO_JWT_SECRET = "demo-secret-change-me"
+
+
+def app_env() -> str:
+    """Deployment environment name (``HUB_ENV``), lower-cased.
+
+    Only ``production`` is special: it turns the fail-closed guards on
+    (see :func:`validate_runtime_config`). Anything else — including the
+    unset default, ``development`` — keeps the local/demo posture.
+    """
+    return os.environ.get("HUB_ENV", "development").strip().lower()
+
+
+def is_production() -> bool:
+    return app_env() == "production"
+
 
 def jwt_secret() -> str:
-    return os.environ.get("HUB_JWT_SECRET", "demo-secret-change-me")
+    return os.environ.get("HUB_JWT_SECRET", DEMO_JWT_SECRET)
+
+
+def jwt_secret_is_demo_default() -> bool:
+    return jwt_secret() == DEMO_JWT_SECRET
+
+
+def validate_runtime_config() -> None:
+    """Fail closed in production: never run on the demo JWT secret.
+
+    The demo default is public (it is printed in this file and the
+    README), so anyone who knows it can forge operator sessions. With
+    ``HUB_ENV=production`` an unset or still-default ``HUB_JWT_SECRET``
+    raises ``RuntimeError`` naming the variable instead of booting.
+    In every other mode this is a no-op — ``server.py`` logs a loud
+    warning instead, so local/demo use keeps working.
+    """
+    if is_production() and jwt_secret_is_demo_default():
+        raise RuntimeError(
+            "HUB_JWT_SECRET is unset or still set to the public demo "
+            "default ('demo-secret-change-me') while HUB_ENV=production. "
+            "Refusing to start: set HUB_JWT_SECRET to a long random value "
+            "in the deployment environment (see DEPLOYMENT.md)."
+        )
 
 
 def jwt_ttl_hours() -> int:

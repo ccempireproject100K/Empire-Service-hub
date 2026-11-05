@@ -25,6 +25,24 @@ from routers import widget
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger("service-hub")
 
+# Fail closed before anything else: in production (HUB_ENV=production) an
+# unset/demo HUB_JWT_SECRET raises here and the app refuses to boot — the
+# demo default is public, so sessions signed with it are forgeable. In
+# every other mode the demo default only earns this unmissable warning.
+config.validate_runtime_config()
+if config.jwt_secret_is_demo_default():
+    logger.warning(
+        "\n"
+        "==================================================================\n"
+        "  WARNING: HUB_JWT_SECRET is unset — operator sessions are signed\n"
+        "  with the PUBLIC demo default ('demo-secret-change-me') and can\n"
+        "  be forged by anyone. Fine for local/demo use ONLY. Before any\n"
+        "  real deployment set a real HUB_JWT_SECRET and HUB_ENV=production\n"
+        "  (in production this warning becomes a refusal to boot).\n"
+        "  See DEPLOYMENT.md.\n"
+        "=================================================================="
+    )
+
 BASE_DIR = Path(__file__).resolve().parent
 FRONTEND_DIR = BASE_DIR.parent / "frontend"
 
@@ -146,11 +164,8 @@ async def _sla_scheduler_loop():
 @app.on_event("startup")
 async def _start_scheduler():
     global _scheduler_task
-    if config.jwt_secret() == "demo-secret-change-me":
-        logger.warning(
-            "HUB_JWT_SECRET is unset — operator sessions are signed with the "
-            "public demo default. Set a real HUB_JWT_SECRET before deploying."
-        )
+    # The HUB_JWT_SECRET demo-default check lives at import time (above):
+    # in production it refuses to boot; elsewhere it logs the loud banner.
     if os.environ.get("HUB_SCHEDULER", "on") == "off":
         return
     _scheduler_task = asyncio.create_task(_sla_scheduler_loop())
